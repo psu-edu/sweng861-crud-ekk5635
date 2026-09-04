@@ -11,12 +11,20 @@ import secrets
 from contextlib import asynccontextmanager
 from urllib.parse import urlencode
 
-from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.responses import JSONResponse, RedirectResponse
+from sqlalchemy.orm import Session
 
 from config import get_settings
-from db import create_tables
-from oidc import get_provider_metadata
+from db import create_tables, get_db
+from oidc import (
+    OidcError,
+    exchange_code_for_tokens,
+    get_provider_metadata,
+    verify_id_token,
+)
+from tokens import issue_session_token
+from users import upsert_user
 
 # Short-lived cookies that carry the login attempt from the redirect to the
 # callback. All three are per-attempt random values; none is a secret the user
@@ -123,4 +131,76 @@ def login() -> RedirectResponse:
             secure=settings.google_redirect_uri.startswith("https://"),
             path="/auth",
         )
+    return response
+
+
+@app.get("/auth/callback")
+def callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    """Leg 3: Google returns the user here with an authorization code.
+
+    Order matters. The cheap, local checks run before anything is sent to
+    Google, so a forged callback is refused without this server making a
+    request on its behalf:
+
+    1. did Google report an error, or is the code missing;
+    2. does the state in the query match the state in this browser's cookie;
+    3. exchange the code, presenting the PKCE verifier;
+    4. verify the id_token's signature, issuer, audience, expiry and nonce;
+    5. create or update the local user;
+    6. issue this application's own session token.
+
+    Every failure answers with the same generic message. Distinguishing "bad
+    state" from "expired code" from "unknown signing key" would let a caller
+    map the defenses; the detail goes to the server log instead.
+    """
+    invalid = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Login could not be completed",
+    )
+
+    # The user declined consent, or Google rejected the request.
+    if error or not code or not state:
+        raise invalid
+
+    cookie_state = request.cookies.get(STATE_COOKIE)
+    nonce = request.cookies.get(NONCE_COOKIE)
+    code_verifier = request.cookies.get(VERIFIER_COOKIE)
+    if not cookie_state or not nonce or not code_verifier:
+        # No cookies means this callback did not start at /auth/login in this
+        # browser - or it sat past the ten-minute window.
+        raise invalid
+
+    if not secrets.compare_digest(state, cookie_state):
+        raise invalid
+
+    try:
+        google_tokens = exchange_code_for_tokens(code, code_verifier)
+        identity = verify_id_token(google_tokens["id_token"], nonce)
+    except OidcError:
+        # TODO(week 6): log the OidcError detail through the observability
+        # stack. It must not travel to the client.
+        raise invalid from None
+
+    user = upsert_user(db, identity)
+    settings = get_settings()
+
+    response = JSONResponse(
+        {
+            "access_token": issue_session_token(user),
+            "token_type": "bearer",
+            "expires_in": settings.session_jwt_ttl_seconds,
+        }
+    )
+
+    # The login transaction is over; these have no further use, and a spent
+    # verifier or nonce sitting in the browser is only exposure.
+    for name in (STATE_COOKIE, NONCE_COOKIE, VERIFIER_COOKIE):
+        response.delete_cookie(name, path="/auth")
+
     return response
