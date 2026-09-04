@@ -14,6 +14,7 @@ from urllib.parse import urlencode
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from config import get_settings
 from db import create_tables, get_db
@@ -58,6 +59,24 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(
+    request: Request, exc: StarletteHTTPException
+) -> JSONResponse:
+    """Send an error body of our own shape rather than FastAPI's.
+
+    FastAPI wraps a raised detail as {"detail": ...}. The assignment specifies
+    {"error": ..., "message": ...} for a 401, so a detail raised as a mapping
+    is emitted as the body itself; anything else keeps the default shape.
+
+    Nothing here reads the exception's cause or traceback: error responses
+    carry no internal detail.
+    """
+    if isinstance(exc.detail, dict):
+        return JSONResponse(exc.detail, status_code=exc.status_code, headers=exc.headers)
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
 
 
 @app.get("/health")
