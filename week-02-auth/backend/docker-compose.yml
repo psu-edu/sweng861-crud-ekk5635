@@ -1,0 +1,29 @@
+# PostgreSQL for the Week 2 auth service.
+#
+# Placed next to .env so `docker compose up -d` from this directory picks the
+# credentials up automatically; no password is written into this file.
+# Week 6 consolidates the application and the database into one compose stack.
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: sweng861-week2-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Compose reports the service healthy only once Postgres accepts
+      # connections, so the app is not started against a socket that is still
+      # initializing.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
