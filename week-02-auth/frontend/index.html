@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SWENG 861 Week 2 — Google Login</title>
+<!--
+  Minimal front end for the Week 2 authentication assignment.
+
+  Everything is inline: no CDN script, no web font, no external stylesheet.
+  A page whose whole job is to start a login should not be pulling code from
+  third parties it would then be trusting with that login.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0; min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f6f7f9; color: #1c2024;
+  }
+  main { width: min(560px, 92vw); }
+  h1 { font-size: 1.35rem; margin: 0 0 .25rem; }
+  p.sub { margin: 0 0 1.75rem; color: #62707d; }
+  section { background: #fff; border: 1px solid #e3e8ee; border-radius: 10px; padding: 1.25rem; margin-bottom: 1rem; }
+  h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: #62707d; margin: 0 0 .85rem; }
+  a.button, button {
+    display: inline-block; padding: .6rem 1.1rem; border-radius: 7px;
+    border: 1px solid #d3dae2; background: #fff; color: #1c2024;
+    font: inherit; font-weight: 600; cursor: pointer; text-decoration: none;
+  }
+  a.button:hover, button:hover { background: #f2f5f9; }
+  textarea {
+    width: 100%; box-sizing: border-box; height: 5.5rem; resize: vertical;
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    padding: .6rem; border: 1px solid #d3dae2; border-radius: 7px; margin-bottom: .8rem;
+  }
+  pre {
+    margin: .9rem 0 0; padding: .8rem; border-radius: 7px; overflow-x: auto;
+    background: #f2f5f9; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .status { font-weight: 700; }
+  .ok { color: #0a7d3f; } .err { color: #b4232c; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #14171a; color: #e7ebef; }
+    section { background: #1c2126; border-color: #2b333b; }
+    a.button, button { background: #232a31; border-color: #39434d; color: #e7ebef; }
+    a.button:hover, button:hover { background: #2b333b; }
+    textarea, pre { background: #171c21; border-color: #2b333b; color: #e7ebef; }
+    p.sub, h2 { color: #93a1ae; }
+    .ok { color: #4ade80; } .err { color: #f87171; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>SWENG 861 — Week 2</h1>
+  <p class="sub">Google OAuth 2.0 / OpenID Connect login and a protected API.</p>
+
+  <section>
+    <h2>Step 1 — Sign in</h2>
+    <!--
+      A plain link, not a fetch(). The authorization request has to be a
+      top-level navigation: the user needs to see accounts.google.com in the
+      address bar to know who is asking for their password. A login rendered
+      inside this page is what a phishing page looks like.
+    -->
+    <a class="button" href="/auth/login">Log in with Google</a>
+    <p class="sub" style="margin:.85rem 0 0">
+      Returns a bearer token as JSON. Copy it into step 2.
+    </p>
+  </section>
+
+  <section>
+    <h2>Step 2 — Call the protected endpoint</h2>
+    <textarea id="token" placeholder="Paste the access_token here, or leave it empty to see the 401" spellcheck="false"></textarea>
+    <button id="call">GET /api/hello</button>
+    <pre id="out">No request sent yet.</pre>
+  </section>
+</main>
+
+<script>
+  // The token lives in this field and nowhere else - not in localStorage,
+  // which any script running on this origin can read, and which would keep a
+  // valid credential on the machine after the tab is closed.
+  document.getElementById("call").addEventListener("click", async () => {
+    const token = document.getElementById("token").value.trim();
+    const out = document.getElementById("out");
+
+    // Sent only when present, so an empty field demonstrates the 401 path.
+    const headers = token ? { Authorization: "Bearer " + token } : {};
+
+    try {
+      const response = await fetch("/api/hello", { headers });
+      const body = await response.json();
+      const cls = response.ok ? "ok" : "err";
+      out.innerHTML =
+        '<span class="status ' + cls + '">' + response.status + " " + response.statusText + "</span>\n\n" +
+        JSON.stringify(body, null, 2).replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
+    } catch (error) {
+      out.textContent = "Request failed: " + error;
+    }
+  });
+</script>
+</body>
+</html>
