@@ -19,6 +19,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from config import get_settings
 from db import create_tables, get_db
+from ratelimit import limit_login
 from oidc import (
     OidcError,
     exchange_code_for_tokens,
@@ -98,7 +99,7 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/auth/login")
+@app.get("/auth/login", dependencies=[Depends(limit_login)])
 def login() -> RedirectResponse:
     """Leg 1 of the three-legged flow: send the user to Google to authenticate.
 
@@ -166,7 +167,7 @@ def login() -> RedirectResponse:
     return response
 
 
-@app.get("/auth/callback")
+@app.get("/auth/callback", dependencies=[Depends(limit_login)])
 def callback(
     request: Request,
     code: str | None = None,

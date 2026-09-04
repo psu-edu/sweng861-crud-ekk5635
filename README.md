@@ -134,6 +134,32 @@ because a liveness probe cannot log in.
   git-ignored, and the state cookies are HttpOnly, SameSite=Lax, path-scoped,
   and Secure whenever the redirect URI is HTTPS.
 
+## Bonus Features
+
+**Rate limiting and suspicious-activity logging.** `/auth/login` and
+`/auth/callback` allow ten requests per address per minute; the eleventh
+returns `429` with a `Retry-After` header and a generic body. These endpoints
+are unauthenticated by definition and each one costs an outbound request to
+Google, which makes them the cheapest thing in the application to abuse.
+
+Rejected tokens are counted separately from login attempts, so a burst of one
+cannot mask the other. A single `401` is logged at info level; twenty or more
+from one address inside a minute raises a warning that names the address and
+the count, which is the pattern worth an operator's attention rather than the
+individual failure.
+
+The window slides rather than resetting on a fixed boundary, because a fixed
+window lets a caller send a full allowance on either side of the boundary and
+pass at twice the intended rate. Counters live in the process, which is
+honest for a single worker and stated as a limitation: several workers each
+keep their own, so an exact global limit needs a shared store such as Redis —
+Week 6 work, alongside forwarding these logs to the observability stack.
+
+The client address comes from the connection, not from `X-Forwarded-For`. A
+caller can put anything in that header, so trusting it would let an attacker
+reset their own counter at will; a deployment behind a proxy needs the proxy
+configured as trusted instead.
+
 ## Additional Hardening
 
 Beyond the required `state` parameter, the flow also uses **PKCE (S256)** and a
@@ -169,7 +195,7 @@ OAuth 2.0 client whose **Authorized redirect URI** is exactly
 | ------ | ---- | ---- | -------- |
 | GET | `/` | — | Login page |
 | GET | `/health` | — | `{"status": "ok"}` |
-| GET | `/auth/login` | — | `302` to Google |
+| GET | `/auth/login` | — | `302` to Google (10/min per address, then `429`) |
 | GET | `/auth/callback` | — | `{"access_token": "...", "token_type": "bearer", "expires_in": 3600}` |
 | GET | `/api/hello` | Bearer | `{"message": "Hello, <email>!"}` / `401` |
 
@@ -180,11 +206,18 @@ cd week-02-auth/backend
 .venv/bin/python -m pytest tests/ -v
 ```
 
-Ten tests, no database and no network: the required unauthenticated `401` and
-authenticated `200`, that `/health` stays public, and seven rejected tokens —
-expired, signed with another key, a forged issuer, missing `exp`, `alg=none`,
-a payload edited to another user id under an intact signature, and a string
-that is not a token.
+Sixteen tests, no database and no network — verified by running the suite with
+socket connections blocked:
+
+- the required unauthenticated `401` and authenticated `200`, and that
+  `/health` stays public;
+- seven rejected tokens: expired, signed with another key, a forged issuer,
+  missing `exp`, `alg=none`, a payload edited to another user id under an
+  intact signature, and a string that is not a token;
+- the rate limiter: requests up to the limit pass, the next is `429` with
+  `Retry-After`, one address cannot consume another's allowance, login and
+  token-failure counters stay separate, and a burst of rejected tokens raises
+  exactly one warning where a single failure raises none.
 
 ### AI Usage
 
@@ -192,7 +225,7 @@ Claude Code was used to draft this service. I directed it one piece at a time �
 configuration, database, each leg of the flow, the auth gate, the endpoint,
 the tests — and reviewed each piece before the next, which is why the security
 decisions are recorded in the code comments and the commit messages rather
-than only in this file. I chose the strategy (Option A), the libraries, and
-the additions of PKCE and the nonce. Every claim above was verified by running
+than only in this file. I chose the strategy (Option A), the libraries, the
+additions of PKCE and the nonce, and the bonus feature. Every claim above was verified by running
 it: the login against real Google credentials, the rejection paths with curl,
 and the token cases in the test suite.

@@ -11,10 +11,11 @@ handler a typed user instead of an untyped value on the request object.
 from dataclasses import dataclass
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from config import get_settings
+from ratelimit import note_failed_authentication
 from tokens import ALGORITHM, ISSUER
 
 
@@ -52,6 +53,7 @@ def _unauthorized() -> HTTPException:
 
 
 def require_auth(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> AuthenticatedUser:
     """Verify the bearer token and return the caller's identity.
@@ -63,8 +65,12 @@ def require_auth(
 
     The issuer is pinned and the standard claims are required, so a token
     signed elsewhere, or one missing an expiry, is not accepted by default.
+
+    Every rejection is reported to the security log, which is what turns a
+    single 401 into a visible pattern when one address produces many.
     """
     if credentials is None or credentials.scheme.lower() != "bearer":
+        note_failed_authentication(request)
         raise _unauthorized()
 
     try:
@@ -76,6 +82,7 @@ def require_auth(
             options={"require": ["exp", "iat", "iss", "sub"]},
         )
     except jwt.PyJWTError:
+        note_failed_authentication(request)
         raise _unauthorized() from None
 
     return AuthenticatedUser(id=int(claims["sub"]), email=claims.get("email"))
