@@ -24,6 +24,7 @@ from oidc import (
     get_provider_metadata,
     verify_id_token,
 )
+from security import AuthenticatedUser, require_auth
 from tokens import issue_session_token
 from users import upsert_user
 
@@ -223,3 +224,26 @@ def callback(
         response.delete_cookie(name, path="/auth")
 
     return response
+
+
+@app.get("/api/hello")
+def hello(user: AuthenticatedUser = Depends(require_auth)) -> dict[str, str]:
+    """The protected endpoint. Without a valid token this is a 401.
+
+    Three OWASP API risks shape these six lines.
+
+    Broken Object Level Authorization: the identity comes from the verified
+    token and from nowhere else. There is no user id in the path or the query
+    string, so there is no identifier for a caller to change in order to be
+    answered as somebody else. When Week 3 adds records, the same rule becomes
+    a where-clause on owner_id taken from this same token.
+
+    Excessive Data Exposure: the response is one sentence. Returning the user
+    object, or the token's claims, would leak fields the client never asked for
+    and would grow to leak whatever is added to the model later.
+
+    Security Misconfiguration: nothing here can produce a stack trace for the
+    client. The failure paths are the gate's single 401, and the exception
+    handler emits no internal detail.
+    """
+    return {"message": f"Hello, {user.email or 'user'}!"}
