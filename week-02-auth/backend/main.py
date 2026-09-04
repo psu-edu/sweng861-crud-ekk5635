@@ -9,10 +9,11 @@ import base64
 import hashlib
 import secrets
 from contextlib import asynccontextmanager
+from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -42,6 +43,11 @@ STATE_TTL_SECONDS = 600
 # Nothing more is requested - an authorization the app does not need is an
 # authorization it cannot misuse.
 SCOPES = "openid email profile"
+
+# The login page ships next to the backend rather than as a separate origin, so
+# the browser reaches the API and the page over one host and no CORS
+# configuration has to be opened up for a two-page demo.
+INDEX_HTML = Path(__file__).resolve().parent.parent / "frontend" / "index.html"
 
 
 @asynccontextmanager
@@ -78,6 +84,12 @@ async def http_exception_handler(
     if isinstance(exc.detail, dict):
         return JSONResponse(exc.detail, status_code=exc.status_code, headers=exc.headers)
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+
+
+@app.get("/", include_in_schema=False)
+def index() -> FileResponse:
+    """Serve the login page."""
+    return FileResponse(INDEX_HTML)
 
 
 @app.get("/health")
