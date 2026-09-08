@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from config import get_settings
+from coverages import router as coverages_router
 from db import get_db
 from ratelimit import limit_login
 from oidc import (
@@ -56,6 +57,8 @@ app = FastAPI(
     title="SWENG 861 Week 3 — Backend API",
     version="0.2.0",
 )
+
+app.include_router(coverages_router)
 
 
 @app.exception_handler(StarletteHTTPException)
