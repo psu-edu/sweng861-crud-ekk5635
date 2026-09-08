@@ -9,13 +9,13 @@ a value from the request body reaches owner_id.
 from collections.abc import Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from db import get_db
 from models import Coverage
-from schemas import CoverageCreate, CoverageRead
+from schemas import CoverageCreate, CoverageRead, CoverageUpdate
 from security import AuthenticatedUser, require_auth
 
 router = APIRouter(prefix="/api/coverages", tags=["coverages"])
@@ -112,3 +112,61 @@ def get_coverage(
     if coverage is None:
         raise _not_found()
     return coverage
+
+
+@router.patch("/{coverage_id}", response_model=CoverageRead)
+def update_coverage(
+    coverage_id: int,
+    payload: CoverageUpdate,
+    user: AuthenticatedUser = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> Coverage:
+    """Update fields on a coverage the caller owns.
+
+    PATCH rather than PUT: cik cannot be replaced, so a full-representation
+    verb would promise something this resource does not offer.
+    """
+    coverage = db.scalars(
+        select(Coverage).where(
+            Coverage.id == coverage_id,
+            Coverage.owner_id == user.id,
+        )
+    ).one_or_none()
+
+    if coverage is None:
+        raise _not_found()
+
+    # exclude_unset is what separates "not mentioned" from "set to null";
+    # mode="json" renders the status enum as the string the column stores.
+    for field, value in payload.model_dump(exclude_unset=True, mode="json").items():
+        setattr(coverage, field, value)
+
+    db.commit()
+    db.refresh(coverage)
+    return coverage
+
+
+@router.delete("/{coverage_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_coverage(
+    coverage_id: int,
+    user: AuthenticatedUser = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> None:
+    """Delete a coverage the caller owns.
+
+    One statement carrying both terms, rather than a read followed by a delete.
+    A row belonging to someone else matches nothing, so rowcount of zero covers
+    "not yours" and "no such row" alike and answers the same 404.
+    """
+    result = db.execute(
+        delete(Coverage).where(
+            Coverage.id == coverage_id,
+            Coverage.owner_id == user.id,
+        )
+    )
+
+    if result.rowcount == 0:
+        db.rollback()
+        raise _not_found()
+
+    db.commit()
