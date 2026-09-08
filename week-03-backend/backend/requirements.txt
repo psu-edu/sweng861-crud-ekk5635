@@ -1,0 +1,19 @@
+# Web framework and ASGI server (same stack as week-01-setup)
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+
+# OIDC handshake: HTTP calls to Google's token endpoint and JWKS
+httpx==0.28.1
+
+# JWT — verifies Google's RS256 id_token and signs this app's own session token
+pyjwt[crypto]==2.13.0
+
+# User persistence in PostgreSQL
+SQLAlchemy==2.0.52
+psycopg[binary]==3.3.5
+
+# Reads .env so secrets stay out of source
+python-dotenv==1.2.3
+
+# Tests (Part D)
+pytest==9.1.1
