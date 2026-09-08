@@ -1,0 +1,38 @@
+# PostgreSQL for the Week 3 backend service.
+#
+# Placed next to .env so `docker compose up -d` from this directory picks the
+# credentials up automatically; no password is written into this file.
+#
+# Its own container and volume, separate from Week 2: that submission has to
+# stay reproducible, and the Week 3 migrations alter the same `users` table.
+# Both stacks bind 5432, so only one runs at a time.
+# Week 6 consolidates the application and the database into one compose stack.
+
+# Compose derives the project name from the parent directory, which is
+# `backend` for both weeks: without this, `up` here recreates the Week 2
+# container as this one.
+name: sweng861-week3
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: sweng861-week3-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata-week3:/var/lib/postgresql/data
+    healthcheck:
+      # Compose reports the service healthy only once Postgres accepts
+      # connections, so the app is not started against a socket that is still
+      # initializing.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata-week3:
