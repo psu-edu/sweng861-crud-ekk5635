@@ -26,13 +26,12 @@ os.environ.update(
 
 @pytest.fixture(scope="session")
 def client():
-    """A client for the app, with no startup event and so no database.
+    """A client for the app, which needs no database.
 
-    Starlette runs lifespan only for a TestClient used as a context manager.
-    Constructing one plainly is deliberate: the protected endpoint reads the
-    caller's identity out of the token and touches no table, so these tests
-    prove the gate rather than the infrastructure, and they run in CI with no
-    services started.
+    The protected endpoint reads the caller's identity out of the token and
+    touches no table, so these tests prove the gate rather than the
+    infrastructure and run in CI with no services started. Since the schema
+    moved to Alembic the app has no startup hook either.
     """
     from fastapi.testclient import TestClient
 

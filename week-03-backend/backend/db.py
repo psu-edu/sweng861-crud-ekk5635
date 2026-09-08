@@ -12,7 +12,6 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from config import get_settings
-from models import Base
 
 
 @lru_cache(maxsize=1)
@@ -32,14 +31,8 @@ def get_session_factory() -> sessionmaker[Session]:
     return sessionmaker(bind=get_engine(), autoflush=False, expire_on_commit=False)
 
 
-def create_tables() -> None:
-    """Create any table that does not exist yet.
-
-    Enough for Week 2, where the schema is one table and does not change. Once
-    Week 3 starts altering columns this has to become a migration tool
-    (Alembic): create_all only adds, it never modifies an existing table.
-    """
-    Base.metadata.create_all(get_engine())
+# Week 2's create_tables() has been removed: Alembic owns the schema from here,
+# because create_all only adds tables and Week 3 alters an existing one.
 
 
 def get_db() -> Iterator[Session]:
