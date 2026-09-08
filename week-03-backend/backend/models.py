@@ -1,15 +1,24 @@
-"""Database tables for the auth layer.
+"""Database tables.
 
 The assignment asks that the local user record — not the identity provider —
-be the system of record that later entities attach to. Week 3's notes will
-carry an owner_id foreign key onto `users.id`, so that column has to be ours
-and has to be stable.
+be the system of record that later entities attach to. `coverages.owner_id`
+is that attachment, and it is the column every tenant-scoped query filters on.
 """
 
 from datetime import datetime
+from enum import Enum
 
-from sqlalchemy import DateTime, String, func
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import (
+    CHAR,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -55,5 +64,69 @@ class User(Base):
     )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    coverages: Mapped[list["Coverage"]] = relationship(back_populates="owner")
+
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"<User id={self.id} google_sub={self.google_sub!r}>"
+
+
+class CoverageStatus(str, Enum):
+    """The states a coverage may hold. #19 raises its event on a transition."""
+
+    DRAFT = "draft"
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class Coverage(Base):
+    """One user's coverage of one SEC filer."""
+
+    __tablename__ = "coverages"
+
+    __table_args__ = (
+        # One coverage per filer per user. This is what makes a duplicate
+        # create a 409 instead of a second row, and it puts the tenancy rule
+        # in the schema: two users may each cover Apple, neither may twice.
+        UniqueConstraint("owner_id", "cik", name="uq_coverages_owner_cik"),
+        # Built from the enum so the two cannot drift apart.
+        CheckConstraint(
+            "status IN (%s)" % ", ".join(f"'{s.value}'" for s in CoverageStatus),
+            name="ck_coverages_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    # Every query filters on this. No separate index is declared: the unique
+    # constraint above indexes (owner_id, cik), and a B-tree serves a lookup on
+    # its leading column, so one on owner_id alone would be redundant.
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=CoverageStatus.DRAFT.value
+    )
+
+    ticker: Mapped[str | None] = mapped_column(String(10))
+
+    # Fixed width, not an integer: leading zeros carry meaning. Apple is
+    # 0000320193 and the EDGAR path is CIK0000320193. This is the join key to
+    # the external data, and #11 keeps it immutable after creation.
+    cik: Mapped[str] = mapped_column(CHAR(10), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    owner: Mapped["User"] = relationship(back_populates="coverages")
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return f"<Coverage id={self.id} owner_id={self.owner_id} cik={self.cik!r}>"
