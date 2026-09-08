@@ -13,7 +13,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
-    """Shared declarative base so metadata.create_all() sees every table."""
+    """Shared declarative base. Alembic autogenerates against this metadata."""
 
 
 class User(Base):

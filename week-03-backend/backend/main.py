@@ -8,7 +8,6 @@ coverages resource, the SEC EDGAR client, and global error handling on top.
 import base64
 import hashlib
 import secrets
-from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -18,7 +17,7 @@ from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from config import get_settings
-from db import create_tables, get_db
+from db import get_db
 from ratelimit import limit_login
 from oidc import (
     OidcError,
@@ -51,21 +50,11 @@ SCOPES = "openid email profile"
 INDEX_HTML = Path(__file__).resolve().parent.parent / "frontend" / "index.html"
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Ensure the users table exists before the first request is served.
-
-    Run on startup rather than at import time so that importing this module —
-    which the tests do — neither needs a database nor creates one.
-    """
-    create_tables()
-    yield
-
-
+# No startup hook creates the schema: `alembic upgrade head` owns it, and an
+# application that alters tables as it boots cannot be deployed twice safely.
 app = FastAPI(
     title="SWENG 861 Week 3 — Backend API",
     version="0.2.0",
-    lifespan=lifespan,
 )
 
 
