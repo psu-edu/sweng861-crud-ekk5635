@@ -53,10 +53,7 @@ def create_coverage(
         if "uq_coverages_owner_cik" in str(exc.orig):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "error": "Conflict",
-                    "message": "You already cover this filer",
-                },
+                detail="You already cover this filer",
             ) from None
         raise
 
@@ -73,7 +70,7 @@ def _not_found() -> HTTPException:
     """
     return HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
-        detail={"error": "Not Found", "message": "Coverage not found"},
+        detail="Coverage not found",
     )
 
 

@@ -45,8 +45,10 @@ def _unauthorized() -> HTTPException:
     tells an attacker whether a token was genuine but stale, or forged.
     """
     return HTTPException(
+        # Only the message. The "error" key and the status phrase beside it are
+        # filled in by errors.py, so the shape is decided in one place.
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail={"error": "Unauthorized", "message": "Valid access token is required"},
+        detail="Valid access token is required",
         # RFC 6750: a 401 from a bearer-protected resource says how to authenticate.
         headers={"WWW-Authenticate": "Bearer"},
     )
