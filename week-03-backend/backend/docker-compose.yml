@@ -6,7 +6,8 @@
 # Its own container and volume, separate from Week 2: that submission has to
 # stay reproducible, and the Week 3 migrations alter the same `users` table.
 # Both stacks bind 5432, so only one runs at a time.
-# Week 6 consolidates the application and the database into one compose stack.
+# The application now runs here too, in three services: the database, a
+# one-shot migration, and the API. Week 6 extends this with CI/CD.
 
 # Compose derives the project name from the parent directory, which is
 # `backend` for both weeks: without this, `up` here recreates the Week 2
@@ -33,6 +34,64 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # Runs the migrations once and exits. Deliberately a service of its own
+  # rather than a step in the application's entrypoint: #23 removed the
+  # create_all() that ran as the app booted, because a service that alters
+  # tables while starting cannot be started twice safely, and an entrypoint
+  # that migrated would reintroduce exactly that. Here the schema is brought up
+  # by one process, and only then does the API start - however many copies of
+  # it there eventually are.
+  migrate:
+    build: .
+    image: sweng861-week3-backend
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Overrides the value in .env. That file is written for a developer
+      # running uvicorn on the host, where the database is on localhost; inside
+      # this network it answers to the service name. One file serves both
+      # because the container-only difference is stated here.
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    env_file:
+      - .env
+    restart: "no"
+
+  # No container_name on this service or on migrate. A fixed name allows exactly
+  # one container of that name on the daemon, and running a second copy of the
+  # API is the property the separate migration service exists to preserve. The
+  # database keeps its name: it is a singleton by nature, and the capture
+  # commands and the probe scripts address it by that name.
+  #
+  # Removing the name is necessary but not yet sufficient: `up --scale api=2`
+  # still fails, because the second replica cannot bind a host port the first
+  # already holds. Publishing 8000 is what makes the service reachable at
+  # localhost during development, so it stays until something in front of the
+  # API is doing the routing - which is #18, and is where scaling belongs.
+  api:
+    build: .
+    image: sweng861-week3-backend
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        # Waits for the migration to finish and to have succeeded. Without the
+        # exit code in the condition the API would start against a half-built
+        # schema whenever a revision failed, and answer 500s that look like
+        # application bugs.
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    # Read at run time, never built in. The image carries no secret: .env is in
+    # .dockerignore, so it is not in the build context at all, and the same
+    # image can be run against another environment by pointing this elsewhere.
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
 
 volumes:
   pgdata-week3:
