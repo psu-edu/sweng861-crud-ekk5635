@@ -229,3 +229,34 @@ than only in this file. I chose the strategy (Option A), the libraries, the
 additions of PKCE and the nonce, and the bonus feature. Every claim above was verified by running
 it: the login against real Google credentials, the rejection paths with curl,
 and the token cases in the test suite.
+
+---
+
+# Week 3 — CRUD, External Data, and Error Handling
+
+Source: `week-03-backend/`. The Week 2 authentication layer is carried over
+unchanged; this week adds an owned resource, the third-party data behind it,
+and one error contract across every endpoint.
+
+## Third-Party API — SEC EDGAR
+
+I chose the SEC's EDGAR XBRL API (`data.sec.gov/api/xbrl/companyconcept`)
+because this application's premise is that a company note cites real filing
+figures, and EDGAR is where those figures are first published rather than a
+reseller's copy of them. It is free, requires no account, and is maintained by
+a regulator instead of by a vendor whose free tier can be withdrawn in the
+middle of a semester. Its `companyconcept` endpoint answers with a small, flat
+JSON document keyed by unit and period, which is a structure worth validating
+field by field rather than a blob worth storing whole. The trade-off is
+unusual failure behaviour, and both cases were measured against the live API
+before the client was written: a concept the filer never reported answers
+`404` with an **XML** body — so the status code is read before the body is
+touched — and a `200` can carry a figure that is years out of date because an
+accounting standard replaced the tag, which is why revenue is requested as an
+ordered chain of two tags rather than as one.
+
+EDGAR issues no API key. Its fair-access policy instead requires a
+`User-Agent` header naming a real person to contact, and answers `403` without
+one. The value read from `.env` is therefore `SEC_USER_AGENT`: not a secret,
+but a personal address that differs per environment, so `.env.example` carries
+only the variable name and a placeholder.

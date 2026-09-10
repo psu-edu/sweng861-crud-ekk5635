@@ -39,6 +39,7 @@ class Settings:
     session_jwt_secret: str
     session_jwt_ttl_seconds: int
     database_url: str
+    sec_user_agent: str
 
 
 @lru_cache(maxsize=1)
@@ -55,4 +56,5 @@ def get_settings() -> Settings:
         session_jwt_secret=_required("SESSION_JWT_SECRET"),
         session_jwt_ttl_seconds=int(os.getenv("SESSION_JWT_TTL_SECONDS", "3600")),
         database_url=_required("DATABASE_URL"),
+        sec_user_agent=_required("SEC_USER_AGENT"),
     )
