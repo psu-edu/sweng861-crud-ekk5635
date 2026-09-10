@@ -260,3 +260,51 @@ EDGAR issues no API key. Its fair-access policy instead requires a
 one. The value read from `.env` is therefore `SEC_USER_AGENT`: not a secret,
 but a personal address that differs per environment, so `.env.example` carries
 only the variable name and a placeholder.
+
+## API Gateway
+
+Nginx, as a reverse proxy in front of the API, rather than a routing layer
+inside FastAPI. The choice follows from what the assignment asks a gateway to
+do — manage requests and responses — which only holds if requests cannot avoid
+it. A layer inside the framework is the same process it is supposed to be
+governing: it cannot terminate TLS, it cannot answer when the application is
+down, and it cannot spread traffic across more than one copy of the
+application, because there is only ever one. Nginx is also the smaller of the
+two real options next to something like Traefik, in the sense that matters
+here: its behaviour is one file a reader can follow, rather than conventions
+about container labels that have to be known before the routing makes sense.
+
+The API no longer publishes a host port. It is reachable only from inside the
+compose network, so the rules stated at the gateway are not optional — a caller
+cannot route around them by addressing the service directly. That also settles
+something the containerisation step could not: two containers cannot hold one
+host port, so a second copy of the API could not previously start at all. With
+the gateway as the only published entry point, `docker compose up --scale
+api=3` works and Nginx spreads requests across the replicas.
+
+Getting that spreading to actually happen took a correction. Nginx resolves a
+host name in an `upstream` block once, when it starts, and reuses that address
+for the life of the process. Compose gives each replica its own address, so the
+obvious configuration sends every request to whichever container existed first
+and silently ignores the others — measured, with three replicas running and
+Docker's DNS returning all three addresses, twelve requests went twelve times
+to the same one. Naming Docker's resolver and putting the upstream in a
+variable moves the lookup to request time; the same twelve requests then split
+5/4/3, and scaling up or down afterwards is picked up without restarting the
+proxy.
+
+Failures answer in the API's own shape. If no replica is reachable, Nginx would
+normally return its own HTML error page, which is a second error format for
+clients to handle and reveals that the thing behind the door is Nginx. Instead
+it answers `{"error", "message"}` with `Retry-After`, the same contract every
+other failure in this service uses. The gateway keeps a separate health
+endpoint that does not touch the API, because "the gateway is down" and "the
+API is down" are the two states an operator most needs to tell apart, and a
+probe that proxied through would report them identically.
+
+Client addresses are forwarded as `X-Real-IP` and `X-Forwarded-For`, but the
+application still reads the connection address for rate limiting, as Week 2
+decided. A client can put anything in those headers, so trusting them lets a
+caller reset their own rate-limit counter; making the application read them is
+a decision that belongs to a deployment which knows this proxy is the only way
+in, and it is recorded here rather than switched on quietly.

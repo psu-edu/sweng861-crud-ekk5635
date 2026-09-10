@@ -77,6 +77,44 @@ needs_db = pytest.mark.skipif(
 )
 
 
+def _create_database_if_missing(url: str) -> None:
+    """Create the test database when it is not there.
+
+    `docker compose down -v` destroys the volume, and the database that comes
+    back holds only what the migrations create - this one is not among them.
+    That is a footgun rather than a design: the suite failed with seventeen
+    connection errors once for exactly this reason, on a checkout where nothing
+    was wrong with the code.
+
+    Creating it here rather than documenting a command means a fresh machine,
+    a fresh volume and CI all reach a running suite the same way. The database
+    is only ever created; its contents are dropped and rebuilt per session by
+    the fixture below.
+    """
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.engine import make_url
+    from sqlalchemy.exc import OperationalError
+
+    target = make_url(url)
+    probe = create_engine(url)
+    try:
+        with probe.connect():
+            return
+    except OperationalError as exc:
+        if "does not exist" not in str(exc):
+            raise
+    finally:
+        probe.dispose()
+
+    # AUTOCOMMIT because CREATE DATABASE cannot run inside a transaction.
+    admin = create_engine(target.set(database="postgres"), isolation_level="AUTOCOMMIT")
+    try:
+        with admin.connect() as connection:
+            connection.execute(text(f'CREATE DATABASE "{target.database}"'))
+    finally:
+        admin.dispose()
+
+
 @pytest.fixture(scope="session")
 def db_engine():
     """An engine against the test database, with the schema migrated on.
@@ -88,9 +126,12 @@ def db_engine():
     if not TEST_DATABASE_URL:
         pytest.skip("TEST_DATABASE_URL is not set")
 
-    from sqlalchemy import create_engine
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.engine import make_url
 
     from models import Base
+
+    _create_database_if_missing(TEST_DATABASE_URL)
 
     engine = create_engine(TEST_DATABASE_URL)
     Base.metadata.drop_all(engine)
