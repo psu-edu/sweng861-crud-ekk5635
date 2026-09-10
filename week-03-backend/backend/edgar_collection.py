@@ -202,3 +202,47 @@ def _upsert(
         )
     )
     db.flush()
+
+
+def collect_coverage(db: Session, coverage: Coverage, *, client=None) -> dict[str, int]:
+    """Collect every concept this application tracks for one coverage.
+
+    Returns how many rows each concept contributed, keyed by the tag actually
+    stored. A concept the filer never reported is absent rather than zero: the
+    caller asked what was collected, and "nothing, because they do not report
+    it" is not a row count.
+
+    Revenue is a chain rather than a tag. ASC 606 replaced Revenues with
+    RevenueFromContractWithCustomerExcludingAssessedTax for most filers from
+    2018, but not for all of them and not at the same time - JPMorgan still
+    reports the older tag and answers 404 for the newer one, while Apple
+    answers 200 for the older one with figures that stop in 2018. The first tag
+    that yields annual figures wins, and the tag that won is what gets stored,
+    so a row can be traced to the concept it actually came from.
+
+    The chain stops at the first hit rather than merging both tags into one
+    series. Merging would mean deciding, year by year, which of two disagreeing
+    tags to believe, and the newer tag already covers every year a filer has
+    reported under it.
+
+    An error from any concept aborts the whole collection. Half a series is
+    worse than none: it looks complete to whoever reads it next.
+    """
+    collected: dict[str, int] = {}
+
+    for concept in edgar.REVENUE_CONCEPTS:
+        rows = collect_concept(db, coverage, concept, client=client)
+        if rows:
+            collected[concept] = rows
+            break
+
+    for concept in (
+        edgar.NET_INCOME_CONCEPT,
+        edgar.ASSETS_CONCEPT,
+        edgar.EQUITY_CONCEPT,
+    ):
+        rows = collect_concept(db, coverage, concept, client=client)
+        if rows:
+            collected[concept] = rows
+
+    return collected

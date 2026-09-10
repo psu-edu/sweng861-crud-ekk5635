@@ -40,6 +40,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logger = logging.getLogger("sweng861.errors")
 
+# How long a client is told to wait before retrying a failed collection. A
+# fixed, modest number: this service has no way to know when SEC will recover,
+# and a header that guesses too high turns a blip into an outage for whoever
+# believes it.
+UPSTREAM_RETRY_AFTER_SECONDS = 60
+
 
 # Phrases that moved between Python releases. 422 was renamed from
 # "Unprocessable Entity" to "Unprocessable Content" in Python 3.13, following
@@ -154,6 +160,48 @@ async def handle_unexpected_error(request: Request, exc: Exception) -> JSONRespo
     )
 
 
+async def handle_upstream_error(request: Request, exc: Exception) -> JSONResponse:
+    """A third-party API failed. That is not this service failing.
+
+    Without this handler an EdgarError would reach handle_unexpected_error and
+    answer 500, which says "we have a bug" about an afternoon when SEC was
+    down. Issue #6 asked that an outage upstream not take these endpoints down
+    with it; this is where that promise is kept, and it is registered here
+    rather than caught in a route so that an endpoint added later inherits it.
+
+    The two answers differ because the two failures do. EdgarUnavailable means
+    the request never got through - a timeout, or a 5xx that survived the
+    retries - so the caller is told to try again and given a Retry-After.
+    Anything else means the response was unusable, and repeating it would
+    produce the same unusable response, so there is nothing to retry.
+
+    The body names no provider, no field and no library. A 502 travels into
+    logs, screenshots and bug reports exactly as a 422 does; which upstream
+    this service reads, and which library parses it, is not a caller's business
+    and is a dependency an attacker can look up advisories for. The detail goes
+    to the log beside an incident id.
+    """
+    from edgar import EdgarUnavailable
+
+    incident = uuid.uuid4().hex[:12]
+    logger.warning(
+        "upstream failure incident=%s %s %s: %s",
+        incident, request.method, request.url.path, exc,
+    )
+
+    if isinstance(exc, EdgarUnavailable):
+        return error_response(
+            HTTPStatus.SERVICE_UNAVAILABLE,
+            "The external data provider is temporarily unreachable. Try again shortly.",
+            headers={"Retry-After": str(UPSTREAM_RETRY_AFTER_SECONDS)},
+        )
+
+    return error_response(
+        HTTPStatus.BAD_GATEWAY,
+        "The external data provider returned a response this service could not use.",
+    )
+
+
 def install_error_handlers(app: FastAPI) -> None:
     """Register the three handlers on the application.
 
@@ -161,7 +209,17 @@ def install_error_handlers(app: FastAPI) -> None:
     that the error contract lives in a single file. An endpoint added later
     inherits it by existing - there is nothing for the author of that endpoint
     to remember to do.
+
+    Order matters only in that the Exception handler is the fallback: Starlette
+    picks the most specific registered class for a raised exception, so
+    EdgarError is answered by its own handler rather than by that one.
     """
+    # Imported here rather than at module scope: this module is the error
+    # contract for the whole service, and it should not fail to import because
+    # one feature's client is missing.
+    from edgar import EdgarError
+
     app.add_exception_handler(StarletteHTTPException, handle_http_exception)
+    app.add_exception_handler(EdgarError, handle_upstream_error)
     app.add_exception_handler(RequestValidationError, handle_validation_error)
     app.add_exception_handler(Exception, handle_unexpected_error)

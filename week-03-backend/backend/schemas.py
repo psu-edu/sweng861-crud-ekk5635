@@ -5,7 +5,8 @@ client cannot choose it, and it is not returned, because every row a caller can
 read is already their own.
 """
 
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -64,3 +65,45 @@ class CoverageRead(BaseModel):
     cik: str
     created_at: datetime
     updated_at: datetime
+
+
+class CollectionReport(BaseModel):
+    """What one collection run did, in the terms the caller asked in.
+
+    A count and the tags it came from, not the rows themselves. The rows are a
+    GET away, and returning sixty of them from a POST would make the response
+    grow with the filer's history for no reason the caller stated.
+    """
+
+    coverage_id: int
+    collected: int
+    # Sorted so two runs that collected the same things read the same, and the
+    # tag is the one actually stored - which matters for revenue, where a
+    # fallback decides between two.
+    concepts: list[str]
+
+
+class CoverageFinancialRead(BaseModel):
+    """One stored figure.
+
+    coverage_id is absent for the same reason owner_id is absent from
+    CoverageRead: the caller asked for this coverage's figures by naming it in
+    the path, and echoing the id back tells them nothing they did not send.
+
+    The internal row id is absent too. Nothing addresses one of these
+    individually - they are collected and read as a series - so publishing an
+    id would invite a URL that does not exist.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    concept: str
+    period_start: date | None
+    period_end: date
+    value: Decimal
+    unit: str
+    form: str
+    accn: str
+    filed: date
+    source: str
+    collected_at: datetime

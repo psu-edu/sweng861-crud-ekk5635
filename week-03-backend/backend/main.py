@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from config import get_settings
 from coverages import router as coverages_router
+from financials import router as financials_router
 from db import get_db
 from errors import install_error_handlers
 from ratelimit import limit_login
@@ -59,6 +60,7 @@ app = FastAPI(
 )
 
 app.include_router(coverages_router)
+app.include_router(financials_router)
 
 # Every failure this service can answer with - a refusal a handler raised, a
 # route Starlette could not match, a body that failed validation, or a bug -

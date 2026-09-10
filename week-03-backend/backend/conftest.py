@@ -147,3 +147,51 @@ def assets_client():
     return httpx.Client(
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json=payload))
     )
+
+
+@pytest.fixture
+def api(db_session):
+    """A TestClient whose requests run inside the test's own transaction.
+
+    get_db is overridden rather than pointed at another database, so a request
+    made through this client and an assertion made directly on db_session see
+    the same uncommitted rows - and the rollback at the end of the test undoes
+    both together.
+
+    The session's commit is neutralised for the same reason: a handler that
+    committed would end the transaction the fixture rolls back, and the test
+    database would start accumulating rows between tests.
+    """
+    from fastapi.testclient import TestClient
+
+    from db import get_db
+    from main import app
+
+    db_session.commit = db_session.flush
+
+    app.dependency_overrides[get_db] = lambda: db_session
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def owner_token(coverage):
+    """A session token for the user who owns the coverage fixture."""
+    from models import User
+    from tokens import issue_session_token
+
+    return issue_session_token(User(id=coverage.owner_id, email="analyst@psu.edu"))
+
+
+@pytest.fixture
+def other_token(db_session):
+    """A token for a second user, who owns nothing."""
+    from models import User
+    from tokens import issue_session_token
+
+    stranger = User(google_sub="test-stranger", email="stranger@psu.edu")
+    db_session.add(stranger)
+    db_session.flush()
+    return issue_session_token(stranger)
