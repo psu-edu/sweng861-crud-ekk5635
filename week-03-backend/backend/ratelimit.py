@@ -101,7 +101,7 @@ def limit_login(request: Request) -> None:
         )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={"error": "Too Many Requests", "message": "Slow down and try again shortly"},
+            detail="Slow down and try again shortly",
             headers={"Retry-After": str(retry_after)},
         )
 

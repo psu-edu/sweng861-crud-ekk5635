@@ -14,11 +14,11 @@ from urllib.parse import urlencode
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
-from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from config import get_settings
 from coverages import router as coverages_router
 from db import get_db
+from errors import install_error_handlers
 from ratelimit import limit_login
 from oidc import (
     OidcError,
@@ -60,23 +60,10 @@ app = FastAPI(
 
 app.include_router(coverages_router)
 
-
-@app.exception_handler(StarletteHTTPException)
-async def http_exception_handler(
-    request: Request, exc: StarletteHTTPException
-) -> JSONResponse:
-    """Send an error body of our own shape rather than FastAPI's.
-
-    FastAPI wraps a raised detail as {"detail": ...}. The assignment specifies
-    {"error": ..., "message": ...} for a 401, so a detail raised as a mapping
-    is emitted as the body itself; anything else keeps the default shape.
-
-    Nothing here reads the exception's cause or traceback: error responses
-    carry no internal detail.
-    """
-    if isinstance(exc.detail, dict):
-        return JSONResponse(exc.detail, status_code=exc.status_code, headers=exc.headers)
-    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+# Every failure this service can answer with - a refusal a handler raised, a
+# route Starlette could not match, a body that failed validation, or a bug -
+# leaves through errors.py in one shape. See that module for why.
+install_error_handlers(app)
 
 
 @app.get("/", include_in_schema=False)
