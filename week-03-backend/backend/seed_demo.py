@@ -124,7 +124,14 @@ def create_coverages(client: TestClient, token: str, rows: list[tuple]) -> list[
     return ids
 
 
-def main() -> None:
+def seed() -> tuple[str, str, list[int], list[int]]:
+    """Reset and repopulate, returning the tokens and ids but printing nothing.
+
+    Split from main so that another script can put the database into this state
+    without the report below landing in its output. demo_walkthrough.py is the
+    caller that needs this: its transcript is screenshotted and submitted, and
+    the report prints bearer tokens.
+    """
     session = get_session_factory()()
     try:
         reset(session)
@@ -137,6 +144,11 @@ def main() -> None:
     client = TestClient(app)
     ids_a = create_coverages(client, token_a, ANALYST_A)
     ids_b = create_coverages(client, token_b, ANALYST_B)
+    return token_a, token_b, ids_a, ids_b
+
+
+def main() -> None:
+    token_a, token_b, ids_a, ids_b = seed()
 
     ttl = get_settings().session_jwt_ttl_seconds
     expires = datetime.now(timezone.utc).timestamp() + ttl
