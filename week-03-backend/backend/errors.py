@@ -114,7 +114,12 @@ async def handle_validation_error(
         for error in exc.errors()
     ]
     return error_response(
-        HTTPStatus.UNPROCESSABLE_CONTENT,
+        # The literal, not HTTPStatus.UNPROCESSABLE_CONTENT: that name only
+        # exists from Python 3.13, so on an older interpreter this module would
+        # fail to import and take the whole service with it. The number is the
+        # part of the status that never moved, and PINNED_PHRASES is keyed by it
+        # for the same reason.
+        422,
         "Request validation failed",
         details=details,
     )
