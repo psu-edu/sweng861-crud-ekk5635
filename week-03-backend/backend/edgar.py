@@ -36,9 +36,8 @@ endpoints down with a 500" — is met by exhausting every failure into
 Mapping those onto a status code belongs to the endpoint that calls this, which
 arrives with persistence.
 
-AI use: drafted with Claude against a captured probe of five filers and seven
-concepts; the retry budget, the 404 policy and the concept list were set from
-that measured output and reviewed line by line.
+AI use: drafted with Claude from a captured probe of five filers and seven
+concepts.
 """
 
 import logging
