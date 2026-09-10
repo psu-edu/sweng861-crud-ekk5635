@@ -20,6 +20,9 @@ os.environ.update(
         "SESSION_JWT_TTL_SECONDS": "3600",
         # Never connected to. Nothing in these tests reaches the database.
         "DATABASE_URL": "postgresql+psycopg://unused:unused@localhost:5432/unused",
+        # SEC requires a contact address on every request. A test must never
+        # send the developer's real one to data.sec.gov.
+        "SEC_USER_AGENT": "SWENG861 Test Suite test@example.invalid",
     }
 )
 
