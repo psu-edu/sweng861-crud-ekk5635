@@ -5,14 +5,17 @@ be the system of record that later entities attach to. `coverages.owner_id`
 is that attachment, and it is the column every tenant-scoped query filters on.
 """
 
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from enum import Enum
 
 from sqlalchemy import (
     CHAR,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -127,6 +130,121 @@ class Coverage(Base):
     )
 
     owner: Mapped["User"] = relationship(back_populates="coverages")
+    financials: Mapped[list["CoverageFinancial"]] = relationship(
+        back_populates="coverage", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"<Coverage id={self.id} owner_id={self.owner_id} cik={self.cik!r}>"
+
+
+class CoverageFinancial(Base):
+    """One reported figure collected from an external source for one coverage.
+
+    Keyed off the coverage rather than off the filer, so the rows a user can
+    read are reachable only through a coverage they own. There is no owner_id
+    column here on purpose: duplicating it would create a second answer to
+    "who owns this row" that can drift from the first, and the tenancy rule is
+    already enforceable by joining coverages and filtering there - which is the
+    same rule #10 put inside the WHERE clause rather than in an if-statement
+    after the fetch.
+
+    What goes in a row, and what stays out, was decided by measuring EDGAR
+    rather than by reading its documentation. Two findings shaped this table.
+
+    A 10-K restates prior years. The same fiscal year is reported again in each
+    later annual filing, under a different accession number and sometimes with
+    a different value: Apple's FY2009 net income was first filed as
+    5,704,000,000 and restated to 8,235,000,000 once the new revenue standard
+    was adopted retrospectively. Keying on the accession number would keep all
+    of them - 142 rows across 19 fiscal years for one concept - so the unique
+    key is the period instead, and the writer keeps whichever row was filed
+    most recently. A restatement is the filer correcting itself, so the latest
+    filing is the one worth holding.
+
+    fp = "FY" does not mean "covers the fiscal year"; it means "reported in the
+    annual filing", and quarterly periods ride along inside a 10-K. Selecting
+    annual figures therefore tests the length of the period rather than trusting
+    that label, which is why period_start is stored: it is the evidence for the
+    row being annual, not decoration.
+    """
+
+    __tablename__ = "coverage_financials"
+
+    __table_args__ = (
+        # The dedup key, and the whole reason collection is repeatable: running
+        # a collection twice writes the same rows rather than a second set.
+        # accn is deliberately absent - see the class docstring.
+        UniqueConstraint(
+            "coverage_id", "concept", "period_end", name="uq_coverage_financials_period"
+        ),
+        # An instant concept has no start; a duration cannot end before it
+        # begins. Both halves are in one constraint because they are one rule.
+        CheckConstraint(
+            "period_start IS NULL OR period_start <= period_end",
+            name="ck_coverage_financials_period_order",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    # CASCADE so that deleting a coverage takes its collected figures with it.
+    # #11 deletes with a single statement and no prior read; without the
+    # cascade that statement would start failing on a foreign key the moment
+    # this table has rows, turning a working 204 into a 500.
+    # No index declared on this column alone. The unique constraint above
+    # indexes (coverage_id, concept, period_end), and a B-tree serves a lookup
+    # on its leading column, so a second index would be paid for on every write
+    # and read by nothing - the same reasoning #9 established for owner_id.
+    coverage_id: Mapped[int] = mapped_column(
+        ForeignKey("coverages.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # The us-gaap tag, e.g. "Assets" or "NetIncomeLoss". Stored as EDGAR named
+    # it so a row can be matched back to the concept that was requested.
+    concept: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    # Null for instant concepts - Assets and StockholdersEquity are balances at
+    # a moment. Measured: 0 of 146 Apple Assets facts carry a start, and 338 of
+    # 338 NetIncomeLoss facts do.
+    period_start: Mapped[date | None] = mapped_column(Date)
+
+    # Numeric, never a float. These are money running to twelve digits, and
+    # binary floating point cannot represent most decimal fractions exactly; a
+    # figure wrong in its last place is worse than one that is missing, because
+    # nothing about it looks wrong. Negative values are legitimate - Tesla
+    # reported losses for years - so there is no non-negative constraint.
+    value: Mapped[Decimal] = mapped_column(Numeric(28, 2), nullable=False)
+    unit: Mapped[str] = mapped_column(String(8), nullable=False)
+
+    # Which filing this figure came from. Not part of the key, but kept: it is
+    # what makes a stored number traceable to a document on EDGAR, and a report
+    # that cannot be traced is a number someone has to take on trust.
+    form: Mapped[str] = mapped_column(String(16), nullable=False)
+    accn: Mapped[str] = mapped_column(String(32), nullable=False)
+    filed: Mapped[date] = mapped_column(Date, nullable=False)
+
+    # Null on filings not made for a fiscal period. Not reachable through the
+    # annual selection, which only admits 10-K figures, but nullable because
+    # the column describes EDGAR's data rather than this application's filter,
+    # and widening the filter later must not require a migration.
+    fiscal_year: Mapped[int | None] = mapped_column()
+    fiscal_period: Mapped[str | None] = mapped_column(String(4))
+
+    # Which external system said so, and when this row was written. Both are
+    # required by the assignment, and the source column is what keeps the table
+    # from silently meaning "whatever EDGAR happened to return" if a second
+    # provider is ever added.
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    collected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    coverage: Mapped["Coverage"] = relationship(back_populates="financials")
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return (
+            f"<CoverageFinancial coverage_id={self.coverage_id} "
+            f"concept={self.concept!r} period_end={self.period_end}>"
+        )
