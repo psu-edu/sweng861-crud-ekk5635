@@ -18,5 +18,7 @@ alembic==1.19.2
 # Reads .env so secrets stay out of source
 python-dotenv==1.2.3
 
-# Tests (Part D)
+# Tests (Part D). pytest-cov records the coverage figure Part 2 asks for and
+# Week 5 grades against a threshold.
 pytest==9.1.1
+pytest-cov==7.1.0

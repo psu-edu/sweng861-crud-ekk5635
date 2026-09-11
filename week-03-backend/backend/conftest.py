@@ -146,12 +146,22 @@ def db_session(db_engine):
 
     Each test therefore starts from an empty table without truncating anything,
     and two tests cannot see each other's rows.
+
+    The session works inside a SAVEPOINT rather than directly on the outer
+    transaction. That is not a detail: two handlers roll back deliberately -
+    the duplicate-cik insert and the delete that matched no row - and a plain
+    session would have aimed those at the transaction this fixture owns,
+    discarding the fixture's own rows along with the handler's failed
+    statement. A test then watched a correct handler refuse a stranger's
+    delete and reported the row as deleted anyway. With create_savepoint the
+    handler's rollback stops at its own savepoint, which is what happens in
+    production, where the transaction it ends is the request's own.
     """
     from sqlalchemy.orm import Session
 
     connection = db_engine.connect()
     transaction = connection.begin()
-    session = Session(bind=connection)
+    session = Session(bind=connection, join_transaction_mode="create_savepoint")
     try:
         yield session
     finally:
@@ -162,7 +172,13 @@ def db_session(db_engine):
 
 @pytest.fixture
 def coverage(db_session):
-    """One user holding one coverage of Tesla, matching the captured fixtures."""
+    """One user holding one coverage of Tesla, matching the captured fixtures.
+
+    Committed, not flushed. The commit releases the savepoint, which puts these
+    rows in the outer transaction - so a handler that rolls back during the
+    test cannot take the test's own setup with it. They are still undone at the
+    end, when the fixture rolls back that outer transaction.
+    """
     from models import Coverage, User
 
     user = User(google_sub="test-subject", email="analyst@psu.edu")
@@ -173,7 +189,7 @@ def coverage(db_session):
         owner_id=user.id, title="Tesla, Inc.", ticker="TSLA", cik="0001318605"
     )
     db_session.add(row)
-    db_session.flush()
+    db_session.commit()
     return row
 
 
@@ -199,16 +215,16 @@ def api(db_session):
     the same uncommitted rows - and the rollback at the end of the test undoes
     both together.
 
-    The session's commit is neutralised for the same reason: a handler that
-    committed would end the transaction the fixture rolls back, and the test
-    database would start accumulating rows between tests.
+    Neither commit nor rollback is stubbed out. They used to be, and they no
+    longer need to be: the savepoint the session runs in lets a handler end
+    its own transaction without touching the one the fixture rolls back. A
+    stub would also have made the suite disagree with production about the
+    verbs whose whole behaviour is when they commit and when they do not.
     """
     from fastapi.testclient import TestClient
 
     from db import get_db
     from main import app
-
-    db_session.commit = db_session.flush
 
     app.dependency_overrides[get_db] = lambda: db_session
     try:
@@ -234,5 +250,5 @@ def other_token(db_session):
 
     stranger = User(google_sub="test-stranger", email="stranger@psu.edu")
     db_session.add(stranger)
-    db_session.flush()
+    db_session.commit()
     return issue_session_token(stranger)
