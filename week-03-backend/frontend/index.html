@@ -3,9 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SWENG 861 Week 2 — Google Login</title>
+<title>SWENG 861 Week 3 — Coverages API</title>
 <!--
-  Minimal front end for the Week 2 authentication assignment.
+  Minimal front end for the Week 3 coverages service.
+
+  The page itself is Week 2's, carried over with the authentication layer it
+  belongs to: the login flow did not change, so neither did the page that
+  starts it. Only the headings move to Week 3, because a demo screenshot of
+  this service should not announce a different assignment.
 
   Everything is inline: no CDN script, no web font, no external stylesheet.
   A page whose whole job is to start a login should not be pulling code from
@@ -54,8 +59,8 @@
 </head>
 <body>
 <main>
-  <h1>SWENG 861 — Week 2</h1>
-  <p class="sub">Google OAuth 2.0 / OpenID Connect login and a protected API.</p>
+  <h1>SWENG 861 — Week 3</h1>
+  <p class="sub">Google OAuth 2.0 / OpenID Connect login, reused from Week 2, in front of the coverages API.</p>
 
   <section>
     <h2>Step 1 — Sign in</h2>
@@ -72,10 +77,17 @@
   </section>
 
   <section>
-    <h2>Step 2 — Call the protected endpoint</h2>
+    <h2>Step 2 — Call the coverages API</h2>
     <textarea id="token" placeholder="Paste the access_token here, or leave it empty to see the 401" spellcheck="false"></textarea>
-    <button id="call">GET /api/hello</button>
+    <button id="call">GET /api/coverages</button>
     <pre id="out">No request sent yet.</pre>
+    <p class="sub" style="margin:.85rem 0 0">
+      A newly signed-in account owns nothing, so this answers <code>[]</code>
+      even while the database holds other analysts' coverages. That empty list
+      is the tenancy rule seen from the outside: the query is scoped to the
+      caller, so rows that are not theirs are not filtered out of the response
+      — they were never selected.
+    </p>
   </section>
 </main>
 
@@ -91,7 +103,7 @@
     const headers = token ? { Authorization: "Bearer " + token } : {};
 
     try {
-      const response = await fetch("/api/hello", { headers });
+      const response = await fetch("/api/coverages", { headers });
       const body = await response.json();
       const cls = response.ok ? "ok" : "err";
       out.innerHTML =
