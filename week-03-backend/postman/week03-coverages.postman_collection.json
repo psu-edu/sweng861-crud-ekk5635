@@ -1,0 +1,1421 @@
+{
+  "info": {
+    "name": "SWENG 861 Week 3 - Coverages API",
+    "description": "Every endpoint of the Week 3 service, exercised through the gateway.\n\nSETUP\n1. Start the stack:   docker compose up -d\n2. Seed and get tokens:   .venv/bin/python seed_demo.py\n3. Paste the three tokens into tokenA, tokenB and tokenAdmin.\n4. Run the collection.\n\nThe tokens are collection variables with empty defaults, and they are meant to stay empty in the committed file. A bearer token pasted into a file that is pushed is a credential published to whoever reads the repository, and these expire in an hour anyway - re-running seed_demo.py is the intended way to get a fresh pair.\n\nRequests carry assertions rather than being sent by hand, so a run produces a pass/fail table. That is better evidence than a screenshot of one green response: it states what each response was supposed to be before it arrived.\n\nbaseUrl points at the gateway on :8000, which is the only way in. The API publishes no host port, so there is no path that bypasses it.\n\nAI use: drafting and test-case enumeration.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "description": "The gateway. The API container publishes no port of its own."
+    },
+    {
+      "key": "tokenA",
+      "value": "",
+      "description": "Analyst A's session token, from seed_demo.py. Left empty on purpose."
+    },
+    {
+      "key": "tokenB",
+      "value": "",
+      "description": "Analyst B's session token, from seed_demo.py. Left empty on purpose."
+    },
+    {
+      "key": "tokenAdmin",
+      "value": "",
+      "description": "The administrator's session token, from seed_demo.py. The role is a column on that user's row, not a claim in this token."
+    },
+    {
+      "key": "idA",
+      "value": "1",
+      "description": "Analyst A's Apple coverage. seed_demo.py restarts the id sequence, so this is stable across re-seeds."
+    },
+    {
+      "key": "idB",
+      "value": "4",
+      "description": "Analyst B's Apple coverage - the same filer as idA, held by the other tenant."
+    },
+    {
+      "key": "createdId",
+      "value": "",
+      "description": "Set at runtime by the create request in folder 3."
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Health",
+      "description": "The gateway answers without reaching the API, so a failure here separates \"the gateway is down\" from \"the API is down\".",
+      "item": [
+        {
+          "name": "health (no token)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Unauthenticated on purpose: a health check that needed a token could not be used by the container runtime."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"reports the service is up\", function () {",
+                  "    pm.expect(pm.response.json().status).to.eql(\"ok\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. No token is refused",
+      "description": "Assignment 4-8 asks that requests without a token are rejected. Every protected operation is listed rather than a sample: a router gains endpoints one at a time, and the one added without the dependency is the one a sample does not cover.",
+      "item": [
+        {
+          "name": "list without a token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401\", function () { pm.response.to.have.status(401); });",
+                  "pm.test(\"error body has the one shape\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"message\");",
+                  "});",
+                  "pm.test(\"names the scheme the caller should use\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.include(\"Bearer\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create without a token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"x\",\n  \"cik\": \"0000320193\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401\", function () { pm.response.to.have.status(401); });",
+                  "pm.test(\"error body has the one shape\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"message\");",
+                  "});",
+                  "pm.test(\"names the scheme the caller should use\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.include(\"Bearer\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "read without a token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages/{{idA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages",
+                "{{idA}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401\", function () { pm.response.to.have.status(401); });",
+                  "pm.test(\"error body has the one shape\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"message\");",
+                  "});",
+                  "pm.test(\"names the scheme the caller should use\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.include(\"Bearer\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "update without a token",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages/{{idA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages",
+                "{{idA}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"x\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401\", function () { pm.response.to.have.status(401); });",
+                  "pm.test(\"error body has the one shape\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"message\");",
+                  "});",
+                  "pm.test(\"names the scheme the caller should use\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.include(\"Bearer\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "delete without a token",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages/{{idA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages",
+                "{{idA}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401\", function () { pm.response.to.have.status(401); });",
+                  "pm.test(\"error body has the one shape\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"message\");",
+                  "});",
+                  "pm.test(\"names the scheme the caller should use\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.include(\"Bearer\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "collect financials without a token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages/{{idA}}/financials",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages",
+                "{{idA}}",
+                "financials"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401\", function () { pm.response.to.have.status(401); });",
+                  "pm.test(\"error body has the one shape\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"message\");",
+                  "});",
+                  "pm.test(\"names the scheme the caller should use\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.include(\"Bearer\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "read financials without a token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages/{{idA}}/financials",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages",
+                "{{idA}}",
+                "financials"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401\", function () { pm.response.to.have.status(401); });",
+                  "pm.test(\"error body has the one shape\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"message\");",
+                  "});",
+                  "pm.test(\"names the scheme the caller should use\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.include(\"Bearer\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. CRUD as the owner",
+      "description": "The five endpoints in the order a client would use them. The row created in the first request is the one deleted in the last, so the collection can be run repeatedly against the same seeded database.",
+      "item": [
+        {
+          "name": "create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages"
+              ]
+            },
+            "description": "owner_id is not in the body and cannot be: it is taken from the token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Alphabet Inc.\",\n  \"ticker\": \"GOOGL\",\n  \"cik\": \"0001652044\",\n  \"description\": \"Created by the Postman run.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201\", function () { pm.response.to.have.status(201); });",
+                  "pm.test(\"status defaults to draft\", function () {",
+                  "    pm.expect(pm.response.json().status).to.eql(\"draft\");",
+                  "});",
+                  "pm.test(\"owner_id is never returned\", function () {",
+                  "    pm.expect(pm.response.json()).to.not.have.property(\"owner_id\");",
+                  "});",
+                  "// Hand the new id to the requests below rather than hardcoding one.",
+                  "pm.collectionVariables.set(\"createdId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "read it back",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages/{{createdId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages",
+                "{{createdId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"is the row that was just created\", function () {",
+                  "    pm.expect(pm.response.json().cik).to.eql(\"0001652044\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"holds the caller's rows and the new one\", function () {",
+                  "    const ciks = pm.response.json().map(r => r.cik);",
+                  "    pm.expect(ciks).to.include(\"0001652044\");",
+                  "});",
+                  "pm.test(\"no row belongs to anyone else\", function () {",
+                  "    // Analyst B holds Tesla. Seeing it here would mean the list is not scoped.",
+                  "    pm.expect(pm.response.json().map(r => r.cik)).to.not.include(\"0001318605\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "update",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages/{{createdId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages",
+                "{{createdId}}"
+              ]
+            },
+            "description": "PATCH rather than PUT: cik cannot be replaced, so a full-representation verb would promise what this resource does not offer.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"the field sent changed\", function () {",
+                  "    pm.expect(pm.response.json().status).to.eql(\"active\");",
+                  "});",
+                  "pm.test(\"a field not sent did not\", function () {",
+                  "    pm.expect(pm.response.json().title).to.eql(\"Alphabet Inc.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "delete",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages/{{createdId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages",
+                "{{createdId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204\", function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "it is gone",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages/{{createdId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages",
+                "{{createdId}}"
+              ]
+            },
+            "description": "The delete is checked by its effect, not only by its status code."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404\", function () { pm.response.to.have.status(404); });",
+                  "pm.test(\"error body has the one shape\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"message\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Error handling",
+      "description": "Assignment 3-1 asks for error handling on every endpoint. Each case below asserts the same two-key body, because the point of the contract is that a client parses one shape rather than four.",
+      "item": [
+        {
+          "name": "422 - cik is not ten digits",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages"
+              ]
+            },
+            "description": "320193 and 0000320193 are the same filer, but only the padded form matches the EDGAR path, so the unpadded one is refused rather than repaired.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Short CIK\",\n  \"cik\": \"320193\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422\", function () { pm.response.to.have.status(422); });",
+                  "pm.test(\"error body has the one shape\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"message\");",
+                  "});",
+                  "pm.test(\"says which field was wrong\", function () {",
+                  "    pm.expect(JSON.stringify(pm.response.json())).to.include(\"cik\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "422 - a caller-supplied owner_id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages"
+              ]
+            },
+            "description": "Unknown fields are rejected, not dropped. Dropping it would answer 201 and let the caller believe they had created a row for someone else.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Not mine to give\",\n  \"cik\": \"0000789019\",\n  \"owner_id\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422\", function () { pm.response.to.have.status(422); });",
+                  "pm.test(\"error body has the one shape\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"message\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "409 - the same filer twice",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages"
+              ]
+            },
+            "description": "Analyst A already covers Apple from the seed. The conflict is detected by the unique constraint, not by a lookup before the insert - a lookup would leave a window between the two statements.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Apple again\",\n  \"cik\": \"0000320193\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409\", function () { pm.response.to.have.status(409); });",
+                  "pm.test(\"error body has the one shape\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"message\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 - an id that exists nowhere",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages/99999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages",
+                "99999"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404\", function () { pm.response.to.have.status(404); });",
+                  "pm.test(\"error body has the one shape\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"message\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "422 - clearing a required field",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages/{{idA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages",
+                "{{idA}}"
+              ]
+            },
+            "description": "Omitting a key means leave it; sending null means clear it. title is NOT NULL, so null is refused at the schema rather than reaching the database.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422\", function () { pm.response.to.have.status(422); });",
+                  "pm.test(\"error body has the one shape\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"message\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Cross-tenant access",
+      "description": "Analyst B aims each verb at a row analyst A owns. The answer must be the same 404 an unknown id gets: replying 403 would confirm the row exists, which turns a loop over ids into a census of other tenants.",
+      "item": [
+        {
+          "name": "B reads A's row",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages/{{idA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages",
+                "{{idA}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404\", function () { pm.response.to.have.status(404); });",
+                  "pm.test(\"error body has the one shape\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"message\");",
+                  "});",
+                  "pm.test(\"says no more than an unknown id would\", function () {",
+                  "    pm.expect(pm.response.json().message).to.eql(\"Coverage not found\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "B updates A's row",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages/{{idA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages",
+                "{{idA}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"seized\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404\", function () { pm.response.to.have.status(404); });",
+                  "pm.test(\"error body has the one shape\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"message\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "B deletes A's row",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages/{{idA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages",
+                "{{idA}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404\", function () { pm.response.to.have.status(404); });",
+                  "pm.test(\"error body has the one shape\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"message\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "A's row is untouched",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages/{{idA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages",
+                "{{idA}}"
+              ]
+            },
+            "description": "The three refusals above are checked by their effect. A handler that deleted the row and then answered 404 would satisfy every status assertion."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"still there, still named what it was\", function () {",
+                  "    pm.expect(pm.response.json().title).to.eql(\"Apple Inc.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "B's list holds only B's rows",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages"
+              ]
+            },
+            "description": "Both analysts cover Apple, so a shared CIK is not evidence of a leak. Microsoft is held only by A, which makes it the row that proves the scoping."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Tesla is B's\", function () {",
+                  "    pm.expect(pm.response.json().map(r => r.cik)).to.include(\"0001318605\");",
+                  "});",
+                  "pm.test(\"Microsoft is A's and does not appear\", function () {",
+                  "    pm.expect(pm.response.json().map(r => r.cik)).to.not.include(\"0000789019\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. External API (SEC EDGAR)",
+      "description": "The third-party integration from Part 1. These two requests reach data.sec.gov, so they are the only ones in the collection that need the network and the only ones that take seconds rather than milliseconds.",
+      "item": [
+        {
+          "name": "collect Apple's figures",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages/{{idA}}/financials",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages",
+                "{{idA}}",
+                "financials"
+              ]
+            },
+            "description": "200 rather than 201: nothing is created at a new URL. The POST is an action that reaches another system and returns a report of what it stored - a count and the tags it came from, not the rows. Returning sixty rows from a POST would make the body grow with the filer's history for no reason the caller stated."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"reports what it stored\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"collected\");",
+                  "    pm.expect(b.concepts).to.be.an(\"array\").that.is.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "read them back",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages/{{idA}}/financials",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages",
+                "{{idA}}",
+                "financials"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"annual figures, newest first\", function () {",
+                  "    pm.expect(pm.response.json()).to.be.an(\"array\").that.is.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "B cannot collect on A's coverage",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages/{{idA}}/financials",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages",
+                "{{idA}}",
+                "financials"
+              ]
+            },
+            "description": "A sub-resource is where the ownership rule is easiest to lose, because the id in the path belongs to the parent."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404\", function () { pm.response.to.have.status(404); });",
+                  "pm.test(\"error body has the one shape\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"message\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. Role-based authorization",
+      "description": "Assignment 4-8 asks that the authorization levels behave differently per role, not only that a missing token is refused. The same route is sent three ways - no token, an ordinary analyst, and the administrator - so the three answers sit beside each other in one run.",
+      "item": [
+        {
+          "name": "admin route without a token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/coverages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "coverages"
+              ]
+            },
+            "description": "Authentication is still the first gate: require_admin is layered on require_auth rather than replacing it."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401\", function () { pm.response.to.have.status(401); });",
+                  "pm.test(\"error body has the one shape\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"message\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "admin route as an ordinary analyst",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/coverages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "coverages"
+              ]
+            },
+            "description": "403 and not 404. The 404 elsewhere hides whether a row exists, because an id that answers differently can be enumerated. This route hides nothing - one fixed path, the same for everyone, published in the OpenAPI document."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403\", function () { pm.response.to.have.status(403); });",
+                  "pm.test(\"error body has the one shape\", function () {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property(\"error\");",
+                  "    pm.expect(b).to.have.property(\"message\");",
+                  "});",
+                  "pm.test(\"403, not the 404 another tenant's row would give\", function () {",
+                  "    pm.expect(pm.response.code).to.eql(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "admin route as the administrator",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/coverages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "coverages"
+              ]
+            },
+            "description": "The one query in the service with no owner_id term, and the one response that publishes the column."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"returns rows owned by more than one analyst\", function () {",
+                  "    const owners = new Set(pm.response.json().map(r => r.owner_id));",
+                  "    pm.expect(owners.size).to.be.above(1);",
+                  "});",
+                  "pm.test(\"says who owns each row\", function () {",
+                  "    pm.expect(pm.response.json().every(r => \"owner_id\" in r)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "the administrator's own list is still their own",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coverages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "coverages"
+              ]
+            },
+            "description": "Seeing every row is a separate route, not a mode the tenant list slips into. The administrator owns nothing, so their own list is empty while their admin list is not - which is how a demo tells \"sees all rows\" apart from \"sees their own\"."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"empty - the admin holds no coverages\", function () {",
+                  "    pm.expect(pm.response.json()).to.eql([]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

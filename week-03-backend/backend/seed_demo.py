@@ -41,6 +41,7 @@ AI use: drafting, external API probing and performance checks, and reviewing
 security trade-offs.
 """
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
@@ -49,8 +50,25 @@ from sqlalchemy import text
 from config import get_settings
 from db import get_session_factory
 from main import app
-from models import User
+from models import User, UserRole
 from tokens import issue_session_token
+
+
+@dataclass(frozen=True)
+class SeededState:
+    """What a seeded database contains, by name.
+
+    A positional tuple was returned here until an administrator had to be added
+    to it, at which point every caller unpacking four values broke. Naming the
+    fields means the next thing the demo needs can be added without touching
+    the scripts that only wanted the tokens.
+    """
+
+    token_a: str
+    token_b: str
+    token_admin: str
+    ids_a: list[int]
+    ids_b: list[int]
 
 # (title, cik, ticker, status). CIKs verified against EDGAR in the #6 probe;
 # they are ten characters wide because the leading zeros are part of the key.
@@ -79,19 +97,33 @@ def reset(session) -> None:
     session.commit()
 
 
-def create_users(session) -> tuple[User, User]:
-    """Insert the two analysts the demo needs.
+def create_users(session) -> tuple[User, User, User]:
+    """Insert the two analysts and the administrator the demo needs.
 
     Written directly to the table because there is no other way in: a user row
     is created by the OIDC callback after Google authenticates someone, and a
     script cannot drive that. The google_sub values are obviously synthetic so
     that a real login is never confused with a seeded account.
+
+    The administrator holds no coverages of their own. That is the point of the
+    account rather than an omission: every row the admin route returns belongs
+    to somebody else, so a demo cannot mistake "sees all rows" for "sees their
+    own". Their tenant list is empty while their admin list is not.
+
+    role is set here because it is a column, not a token claim - which is
+    exactly what the Postman demo shows. No token can grant it.
     """
     a = User(google_sub="seed-analyst-a", email="analyst-a@psu.edu", name="Analyst A")
     b = User(google_sub="seed-analyst-b", email="analyst-b@psu.edu", name="Analyst B")
-    session.add_all([a, b])
+    admin = User(
+        google_sub="seed-admin",
+        email="admin@psu.edu",
+        name="Administrator",
+        role=UserRole.ADMIN.value,
+    )
+    session.add_all([a, b, admin])
     session.commit()
-    return a, b
+    return a, b, admin
 
 
 def create_coverages(client: TestClient, token: str, rows: list[tuple]) -> list[int]:
@@ -124,7 +156,7 @@ def create_coverages(client: TestClient, token: str, rows: list[tuple]) -> list[
     return ids
 
 
-def seed() -> tuple[str, str, list[int], list[int]]:
+def seed() -> SeededState:
     """Reset and repopulate, returning the tokens and ids but printing nothing.
 
     Split from main so that another script can put the database into this state
@@ -135,20 +167,22 @@ def seed() -> tuple[str, str, list[int], list[int]]:
     session = get_session_factory()()
     try:
         reset(session)
-        analyst_a, analyst_b = create_users(session)
+        analyst_a, analyst_b, administrator = create_users(session)
         token_a = issue_session_token(analyst_a)
         token_b = issue_session_token(analyst_b)
+        token_admin = issue_session_token(administrator)
     finally:
         session.close()
 
     client = TestClient(app)
     ids_a = create_coverages(client, token_a, ANALYST_A)
     ids_b = create_coverages(client, token_b, ANALYST_B)
-    return token_a, token_b, ids_a, ids_b
+    return SeededState(token_a, token_b, token_admin, ids_a, ids_b)
 
 
 def main() -> None:
-    token_a, token_b, ids_a, ids_b = seed()
+    state = seed()
+    ids_a, ids_b = state.ids_a, state.ids_b
 
     ttl = get_settings().session_jwt_ttl_seconds
     expires = datetime.now(timezone.utc).timestamp() + ttl
@@ -162,15 +196,19 @@ def main() -> None:
     print(f"  cross-tenant demo: analyst A asking for id={ids_b[0]} must answer 404,")
     print(f"  though A holds the same filer at id={ids_a[0]}.")
     print()
+    print("  role demo: analyst A gets 403 from /api/admin/coverages; the admin")
+    print(f"  gets 200 and all {len(ids_a) + len(ids_b)} rows, while their own list is empty.")
+    print()
     # Printed rather than written to a file: a bearer token belongs in a
     # terminal a person is looking at, not in a file that can be committed.
-    print(f"  token A: {token_a}")
-    print(f"  token B: {token_b}")
+    print(f"  token A:     {state.token_a}")
+    print(f"  token B:     {state.token_b}")
+    print(f"  token admin: {state.token_admin}")
     print()
     print(
-        f"  both expire in {ttl // 60} min, at "
+        f"  all three expire in {ttl // 60} min, at "
         f"{datetime.fromtimestamp(expires, timezone.utc).strftime('%H:%M:%SZ')}"
-        " - re-run this script for a fresh pair."
+        " - re-run this script for a fresh set."
     )
 
 
