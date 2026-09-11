@@ -15,6 +15,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from admin import router as admin_router
 from config import get_settings
 from coverages import router as coverages_router
 from financials import router as financials_router
@@ -61,6 +62,7 @@ app = FastAPI(
 
 app.include_router(coverages_router)
 app.include_router(financials_router)
+app.include_router(admin_router)
 
 # Every failure this service can answer with - a refusal a handler raised, a
 # route Starlette could not match, a body that failed validation, or a bug -
