@@ -28,6 +28,19 @@ class Base(DeclarativeBase):
     """Shared declarative base. Alembic autogenerates against this metadata."""
 
 
+class UserRole(str, Enum):
+    """What a caller is allowed to do beyond their own rows.
+
+    Two values, not a permission table. The assignment asks for one admin role
+    that can manage all data; inventing a richer scheme would be answering a
+    question nobody asked, and every extra value is one more branch the
+    authorization code has to get right.
+    """
+
+    USER = "user"
+    ADMIN = "admin"
+
+
 class User(Base):
     """A person who has logged in through Google at least once.
 
@@ -39,6 +52,16 @@ class User(Base):
     """
 
     __tablename__ = "users"
+
+    __table_args__ = (
+        # Built from the enum so the two cannot drift apart, the same way
+        # ck_coverages_status is. A role the application does not know about
+        # cannot be written even by hand at the psql prompt.
+        CheckConstraint(
+            "role IN (%s)" % ", ".join(f"'{r.value}'" for r in UserRole),
+            name="ck_users_role",
+        ),
+    )
 
     # Local primary key. Other tables reference this, not the Google subject,
     # so the schema does not break if the project ever adds a second provider.
@@ -65,6 +88,15 @@ class User(Base):
         onupdate=func.now(),
         nullable=False,
     )
+    # Authorisation, not identity - which is why it lives here and not in the
+    # session token. A token is a bearer credential valid until it expires, so
+    # a role carried inside one would keep a demoted administrator an
+    # administrator for the rest of the hour. Reading the column means the
+    # answer is current at the moment the request is judged.
+    role: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=UserRole.USER.value
+    )
+
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     coverages: Mapped[list["Coverage"]] = relationship(back_populates="owner")

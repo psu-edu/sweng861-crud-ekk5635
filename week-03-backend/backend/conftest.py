@@ -243,6 +243,25 @@ def owner_token(coverage):
 
 
 @pytest.fixture
+def admin_token(db_session):
+    """A token for a user whose row carries the admin role.
+
+    The role is set on the row, not in the token, so this fixture has to write
+    to the table - which is the behaviour under test rather than an
+    inconvenience: a token cannot make its bearer an administrator.
+    """
+    from models import User, UserRole
+    from tokens import issue_session_token
+
+    boss = User(
+        google_sub="test-admin", email="admin@psu.edu", role=UserRole.ADMIN.value
+    )
+    db_session.add(boss)
+    db_session.commit()
+    return issue_session_token(boss)
+
+
+@pytest.fixture
 def other_token(db_session):
     """A token for a second user, who owns nothing."""
     from models import User

@@ -308,3 +308,78 @@ decided. A client can put anything in those headers, so trusting them lets a
 caller reset their own rate-limit counter; making the application read them is
 a decision that belongs to a deployment which knows this proxy is the only way
 in, and it is recorded here rather than switched on quietly.
+
+## Access Control — the Public, Authenticated, and Admin Boundary
+
+Three bands, and every route sits in exactly one of them.
+
+| Band | Routes | Gate |
+|---|---|---|
+| Public | `GET /health`, `GET /auth/login`, `GET /auth/callback`, `GET /` | none |
+| Authenticated | `GET`/`POST /api/coverages`, `GET`/`PATCH`/`DELETE /api/coverages/{id}`, `POST`/`GET /api/coverages/{id}/financials`, `GET /api/hello` | `require_auth`, then scoped to the caller's `owner_id` |
+| Admin | `GET /api/admin/coverages` | `require_auth`, then `require_admin` |
+
+The public band is small on purpose and holds nothing belonging to anyone. A
+health probe cannot carry a token, because the container runtime that calls it
+has no account; the two `/auth` routes are how a caller gets a token in the
+first place, so requiring one would be circular.
+
+The assignment offers reading a list as its example of a public endpoint, and
+this application does not follow that example. It is worth saying why rather
+than quietly diverging. Every query here is scoped by `owner_id`: a coverage
+belongs to the analyst who created it, and the whole of the multi-tenancy
+requirement is that no query answers without that term. An unauthenticated
+caller has no `owner_id`, so a public `GET /api/coverages` has no defensible
+answer — returning every tenant's rows is precisely the leak the scoping
+exists to prevent, and returning an empty list is an endpoint that pretends to
+work. The example assumes a public catalogue with one shared set of rows. This
+is a private workspace per analyst, and the honest boundary for it puts the
+whole resource behind authentication.
+
+What the admin role adds is a second question asked after the first. An
+administrator is still authenticated; `require_admin` is layered on
+`require_auth` rather than replacing it, so the token is verified once, by the
+code that owns that job. The privilege it grants is deliberately narrow — one
+route that lists every coverage regardless of owner.
+
+That route is separate rather than a parameter on the tenant list, and the
+reason is the same one that shapes the rest of this service. A `?all=true`
+flag would make the ownership filter in `list_coverages` conditional, and a
+filter that is applied only sometimes is a filter that will eventually be
+skipped by accident. The tenant list stays unconditionally scoped; seeing
+across tenants means asking a different question at a different URL, in a
+module that cannot be reached without the admin dependency. It is also the one
+response in the API that returns `owner_id`, because a list of every row with
+no owner attached cannot be acted on, while a tenant never needs the column —
+every row they can see is already theirs.
+
+The role lives in the `users` table, not in the session token. A token is a
+bearer credential that stays valid until it expires, so a role minted into one
+would outlive the decision that granted it: an administrator demoted a minute
+after signing in would keep administering for the remaining hour. Reading the
+column means the answer is current at the moment the request is judged, and
+the cost — one query — falls only on the routes that need it. The test that
+pins this sends the *same* token twice, refused and then accepted, with
+nothing changed between the two but the column.
+
+A refused admin request answers `403`, while a request for another tenant's
+row answers `404`. The two hide different things. The `404` hides whether a
+row exists, because an id that answers differently from its neighbours is an
+id an attacker can enumerate — for that case, "not yours" and "no such row"
+are deliberately indistinguishable. The admin route keeps no such secret: it
+is one fixed path, identical for every caller, and published in the OpenAPI
+document. Answering `404` there would tell nobody anything except an
+administrator who had just lost the role, who would conclude the feature had
+been removed.
+
+The database holds no password hash, which the assignment's schema sketch
+asks for. Authentication is Google OIDC with the authorization code flow, so
+this application never receives a password and has nothing to hash; it does
+not store Google's access or refresh tokens either, since nothing here calls
+Google on the user's behalf after login. That is a stronger position than the
+sketch rather than a missing field — a credential that is never received
+cannot be leaked from this table — and `ck_users_role` keeps the column that
+*is* there honest, since a role the application does not know about cannot be
+written even by hand at the `psql` prompt.
+
+AI use: drafting, and reviewing the authorization trade-offs.

@@ -82,7 +82,8 @@ def rule(title: str) -> None:
 
 
 def main() -> None:
-    token_a, token_b, _, _ = seed_demo.seed()
+    state = seed_demo.seed()
+    token_a, token_b = state.token_a, state.token_b
 
     client = TestClient(app)
     a = {"Authorization": f"Bearer {token_a}"}

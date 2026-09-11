@@ -34,7 +34,7 @@ WORKDIR /app
 # change, so editing a handler does not reinstall SQLAlchemy - which is the
 # difference between a five-second rebuild and a two-minute one during the
 # work this image exists to support.
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # ---------------------------------------------------------------------------
@@ -61,7 +61,15 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 # Ownership is set during the copy rather than by a later chown: a chown on a
 # copied tree writes a second full copy of it into the next layer.
-COPY --chown=app:app . .
+# The backend is the image; the frontend is the one page it serves at /. They
+# are copied separately, to the layout main.py already resolves - it looks for
+# ../frontend/index.html relative to itself, which from /app is /frontend. The
+# build context is week-03-backend/ rather than backend/ for this reason alone:
+# COPY cannot reach outside its context, so with the context one level down the
+# page was simply absent and every request for / answered 500 - in the
+# container only, since running uvicorn from the source tree finds the file.
+COPY --chown=app:app backend/ /app/
+COPY --chown=app:app frontend/ /frontend/
 
 USER app
 

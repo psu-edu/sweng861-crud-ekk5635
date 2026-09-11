@@ -67,6 +67,19 @@ class CoverageRead(BaseModel):
     updated_at: datetime
 
 
+class CoverageAdminRead(CoverageRead):
+    """A coverage as an administrator sees it: the same row, plus its owner.
+
+    Extending CoverageRead rather than restating its fields means the two
+    cannot drift - a column added to the tenant view appears here too, which is
+    the direction that matters. The only addition is owner_id, and it is the
+    reason a separate model exists at all: an administrator looking at every
+    row needs to know whose each one is, and no tenant-facing response says.
+    """
+
+    owner_id: int
+
+
 class CollectionReport(BaseModel):
     """What one collection run did, in the terms the caller asked in.
 

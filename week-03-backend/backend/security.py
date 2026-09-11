@@ -14,7 +14,12 @@ import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from config import get_settings
+from db import get_db
+from models import User, UserRole
 from ratelimit import note_failed_authentication
 from tokens import ALGORITHM, ISSUER
 
@@ -88,3 +93,43 @@ def require_auth(
         raise _unauthorized() from None
 
     return AuthenticatedUser(id=int(claims["sub"]), email=claims.get("email"))
+
+
+def require_admin(
+    user: AuthenticatedUser = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> AuthenticatedUser:
+    """Admit only an administrator, asking the database each time.
+
+    Layered on require_auth rather than repeating it: the token is verified
+    once, by the code that owns that job, and this dependency answers the one
+    question left - is this caller an administrator?
+
+    The role is read here instead of being carried in the token. A token is a
+    bearer credential that stays valid until it expires, so a role minted into
+    one would outlive the decision that granted it: an administrator demoted a
+    minute after signing in would keep administering for the rest of the hour.
+    The column is the system of record, and reading it costs a query only on
+    the routes that need one.
+
+    A caller whose row is gone is not an administrator either. That is the
+    whole of the reasoning - this dependency answers yes or no, and a missing
+    row is a no. Turning it into a 401 would mean second-guessing require_auth,
+    which has already accepted the token.
+    """
+    role = db.scalar(select(User.role).where(User.id == user.id))
+
+    if role != UserRole.ADMIN.value:
+        # 403, not the 404 a cross-tenant request gets. Those two hide
+        # different things. A 404 hides which rows exist, because an id that
+        # answers differently is an id an attacker can enumerate. An admin
+        # route hides nothing: it is one fixed path, the same for everyone, and
+        # it is in the published OpenAPI document. Answering 404 there would
+        # only tell an administrator who had just lost the role that the
+        # feature had been removed.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This endpoint requires the admin role",
+        )
+
+    return user

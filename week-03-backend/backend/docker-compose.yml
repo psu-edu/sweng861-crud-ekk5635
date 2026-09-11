@@ -43,7 +43,9 @@ services:
   # by one process, and only then does the API start - however many copies of
   # it there eventually are.
   migrate:
-    build: .
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
     image: sweng861-week3-backend
     command: ["alembic", "upgrade", "head"]
     depends_on:
@@ -68,7 +70,9 @@ services:
   # a singleton by nature, and the capture commands and the probe scripts
   # address it by that name.
   api:
-    build: .
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
     image: sweng861-week3-backend
     depends_on:
       db:
